@@ -1,0 +1,7 @@
+anthropic==1.13.0
+fastapi==0.143.0
+phevaluator==0.6.0
+pokerkit==0.7.6
+pydantic==2.14.0
+python-dotenv==1.2.4
+uvicorn==0.54.0
