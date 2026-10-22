@@ -15,7 +15,7 @@ flag usually means a real leak.
 
 import random
 
-from ..bots.reads import estimate_range, open_width, preflop_spot
+from ..bots.reads import estimate_range, open_width, preflop_spot, threebet_continue, vs_open
 from ..cards import card_name, hand_class, rank, suit
 from ..engine import BB
 from ..equity import equity
@@ -129,16 +129,9 @@ def _preflop(spot: Spot):
                       f"Folded to you {where}: {hand} (top {_pct(p)}) is a clear raise; the {pos} opens ~{_pct(width)}.", p=p, width=width)
         return None
 
-    open_bb = sp.last_raise_to / BB
+    open_bb = sp.open_to / BB
     if sp.raises == 1:
-        f = (open_width(sp.opener_position or "CO", n) / 0.27) ** 0.6
-        f = max(0.6, min(2.5, f)) * min(1.0, (2.5 / max(open_bb, 2.5)) ** 0.7)
-        three, call = 0.07 * f, 0.09 * f
-        if pos == "BB":
-            call *= 2.0 if n > 2 else 3.0
-        elif pos == "SB" and n > 2:
-            call *= 0.5
-        cont = three + call
+        three, cont = vs_open(pos, sp.opener_position, open_bb, n, sp.callers_since_raise)
         vs = f"vs a {open_bb:g}bb {sp.opener_position} open"
         if a == "call" and p < 0.025:
             return _m(spot, "flat_premium", "minor", "Flatted a premium",
@@ -158,13 +151,22 @@ def _preflop(spot: Spot):
         return None
 
     if sp.raises == 2:
-        if a == "fold" and p < 0.06:
+        if sp.i_raised:
+            # Hero opened and got 3-bet: defend part of the opening range, more vs wide 3-bettors.
+            villain = vs_open(sp.last_raiser_position, sp.opener_position, open_bb, n)[0]
+            cont = threebet_continue(open_width(pos, n), villain)
+            fold_line, call_line = max(0.025, cont * 0.45), cont * 1.35 + 0.02
+            vs = f"after opening {where}, vs a {sp.last_raiser_position} 3-bet"
+        else:
+            cont, fold_line, call_line = 0.06, 0.06, 0.15
+            vs = "cold vs a 3-bet"
+        if a == "fold" and p < fold_line:
             sev = "major" if p < 0.035 else "minor"
             return _m(spot, "overfold_3bet", sev, "Folded a strong hand to a 3-bet",
-                      f"{hand} (top {_pct(p)}) is a 4-bet or call vs a 3-bet; folding it is too tight.", p=p)
-        if a == "call" and p > 0.15:
+                      f"{hand} (top {_pct(p)}) {vs} is a 4-bet or call; continuing range is ~{_pct(cont)}.", p=p, width=cont)
+        if a == "call" and p > call_line:
             return _m(spot, "loose_call_3bet", "moderate", "Called a 3-bet too wide",
-                      f"{hand} (top {_pct(p)}) plays poorly in a bloated pot; continue vs 3-bets with ~top 9-12%.", p=p)
+                      f"{hand} (top {_pct(p)}) {vs} plays poorly in a bloated pot; continuing range is ~{_pct(cont)}.", p=p, width=cont)
         if a == "raise" and p > 0.08:
             return _m(spot, "loose_4bet", "minor", "Loose 4-bet",
                       f"{hand} (top {_pct(p)}): 4-bet ranges are ~top 3% plus a few blockers (A5s).", p=p)

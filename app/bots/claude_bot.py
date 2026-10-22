@@ -59,6 +59,9 @@ class ClaudeBot:
         self.persona = persona.strip() or f"{self.style.label}. {self.style.blurb}"
         self.fallback = HeuristicBot(style, seed)
 
+    def hand_over(self, net: int, showdown: bool) -> None:
+        self.fallback.hand_over(net, showdown)
+
     def system_prompt(self) -> str:
         return (
             f"You are {self.name}, a player at a No-Limit Texas Hold'em cash game (blinds 0.5/1bb). "

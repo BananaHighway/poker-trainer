@@ -28,7 +28,9 @@ python -m venv .venv
   - **Calling station**: limps and calls far too often, rarely bluffs.
   - **Maniac**: raises and bluffs relentlessly.
 
-  Before the flop, bots follow position-based range charts scaled by their style. After the flop, they estimate equity against each opponent's likely range (inferred from that opponent's betting) and decide using pot odds plus style-tuned value-bet and bluff frequencies.
+  Before the flop, bots follow position-based range charts scaled by their style. They defend the big blind wider against late-position and small opens. When 3-bet, they keep playing part of the range they opened. After the flop, they estimate equity against each opponent's likely range (inferred from that opponent's betting) and decide using pot odds plus style-tuned value-bet and bluff frequencies. Position matters there too: bots usually check to the last street's aggressor, need more equity to call out of position, stab when checked to in position, and barrel some turns and rivers.
+
+  No two bots of a style play alike. Each bot gets its own slightly different version of its style (opening width, 3-bet and defence frequencies, c-bet rate, bet sizes). Hands near a range border are mixed, and once in a while a bot plays a hand from well outside its range. After losing a big pot, a bot plays looser and more aggressively for a few hands. Bots top up to the starting stack, like regulars on auto-rebuy.
 - **Keyboard**: `F` fold, `C` check/call, `R` or `Enter` bet/raise. Use the preset buttons or the slider to set the size.
 - **Show styles**: shows each bot's player type. Turn it off to practise reading opponents from their play.
 - **History** tab: the last 40 hands. Tick *Show mucked hands* to see what the bots folded.
@@ -83,7 +85,7 @@ Hands are stored in `data/hands.db` (SQLite; gitignored). Each row holds a full-
 ## Dev scripts
 
 ```powershell
-.\run.ps1 scripts\simulate.py 1000 6   # bot-vs-bot: engine invariants + VPIP/PFR per style
+.\run.ps1 scripts\simulate.py 1000 6   # bot-vs-bot: engine invariants, how hands end, tracker stats per seat
 .\run.ps1 scripts\build_preflop.py     # regenerate data/preflop_strength.json
 ```
 
@@ -99,8 +101,8 @@ app/
   storage.py       SQLite
   bots/
     styles.py      player-type presets
-    reads.py       preflop situation + opponent range estimates from the action
-    heuristic.py   style-driven bot
+    reads.py       preflop situation, baseline ranges (shared with the mistake finder), opponent range estimates
+    heuristic.py   style-driven bot (per-bot personality, mixing, tilt)
     claude_bot.py  Claude seat (lazy SDK import, heuristic fallback)
     pricing.py     model prices for the cost meter
 static/            Preact + htm UI (no build step; vendored in static/vendor)

@@ -19,7 +19,9 @@ Personal, local-only poker training app. The user is seriously studying **6-max 
 - Claude only decides postflop. Preflop comes from the style chart. Claude's reasons are hidden in the snapshot until the hand ends (they'd leak hand strength).
 - Model IDs: `claude-haiku-5-5` (default), `claude-sonnet-5-5`, `claude-opus-5-5`. Opus and Sonnet go through `client.beta.messages.create` with `betas=["server-side-fallback-2026-07-01"], fallbacks="default"`. Haiku uses plain `messages.create`. Prices are in `bots/pricing.py`.
 - `app/analysis/replay.py` rebuilds each hero decision (price, pot, live opponents) from stored records. Analysis only uses information the hero had at that point.
-- Verify engine changes with `.\run.ps1 scripts\simulate.py 1000 6`. It asserts chip conservation and log sanity, and prints VPIP/PFR per style.
+- Verify engine and bot changes with `.\run.ps1 scripts\simulate.py 1000 6 [style,style,...]`. It asserts chip conservation and log sanity. It then prints how hands ended (walks, uncontested raises, flops seen) and tracker stats per seat. Its docstring lists real-player reference ranges to calibrate against.
+- `bots/reads.vs_open` and `threebet_continue` are the TAG baseline for facing an open or a 3-bet. Bots call them with their own style, and the mistake finder calls them with the default (TAG). Change the baseline there, not in either caller.
+- Each `HeuristicBot` plays a `personalize`d copy of its style (`self.base`), and `self.style` adds tilt on top. The table calls `bot.hand_over(net, showdown)` after every hand. A seeded bot is reproducible, but two bots of one style are not identical.
 
 ## Roadmap
 

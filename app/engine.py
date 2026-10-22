@@ -159,13 +159,11 @@ class Table:
         for s in self.seats:
             if s.cfg.kind == "empty":
                 continue
-            # Bots reload whenever they bust so the table stays full; the hero tops
-            # up to the starting stack when auto top-up is on (standard practice drill).
-            if s.cfg.kind == "hero":
-                if self.config.auto_topup and s.stack < start:
-                    s.bought_in += start - s.stack
-                    s.stack = start
-            elif s.stack < BB:
+            # Bots top up to the starting stack like regulars on auto-rebuy, so stacks
+            # stay near the table depth; the hero does when auto top-up is on.
+            if s.cfg.kind == "hero" and not self.config.auto_topup:
+                continue
+            if s.stack < start:
                 s.bought_in += start - s.stack
                 s.stack = start
 
@@ -330,6 +328,10 @@ class Table:
                     "hand": hand_desc.get(seat)} for seat in h.order if net[seat] > 0]
         for i, seat in enumerate(h.order):
             self.seats[seat].stack = s.stacks[i]
+            # Bots can react to how the hand went (a big loss tilts them for a while).
+            hand_over = getattr(self.seats[seat].bot, "hand_over", None)
+            if hand_over:
+                hand_over(net[seat], showdown and seat in live)
         # Pot actually awarded (excludes any uncalled bet returned to its owner).
         pot = sum(sum(op.amounts) for op in s.operations if type(op).__name__ == "ChipsPushing")
         h.result = {"net": net, "showdown": showdown, "shown": shown, "winners": winners,
