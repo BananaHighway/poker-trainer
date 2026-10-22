@@ -39,6 +39,7 @@ class Style:
     sizing: tuple[float, ...]  # preferred bet sizes as fraction of pot
     wild: float             # chance per preflop decision to play a hand from outside its ranges
     tilt: float             # 0..1 how hard a big loss knocks it off its game
+    adapt: float            # 0..1 how much it plays off its notes on you (regulars do, recs don't)
 
 
 STYLES: dict[str, Style] = {s.key: s for s in (
@@ -46,27 +47,27 @@ STYLES: dict[str, Style] = {s.key: s for s in (
           open_mult=0.65, open_size=2.5, limp=0.0, threebet=0.03, call_open=0.06, bb_defend=0.30,
           fold_3bet=0.65, fourbet=0.015, call_3bet=0.03,
           aggression=0.40, bluff=0.04, cbet=0.40, donk=0.10, looseness=1.25, value_bet=0.70, raise_value=0.86,
-          sizing=(0.5, 0.66), wild=0.002, tilt=0.2),
+          sizing=(0.5, 0.66), wild=0.002, tilt=0.2, adapt=0.5),
     Style("tag", "TAG", "Tight-aggressive regular: solid ranges, bets for value and c-bets often.",
           open_mult=1.0, open_size=2.5, limp=0.0, threebet=0.07, call_open=0.09, bb_defend=0.46,
           fold_3bet=0.5, fourbet=0.03, call_3bet=0.06,
           aggression=0.65, bluff=0.14, cbet=0.55, donk=0.12, looseness=1.0, value_bet=0.62, raise_value=0.80,
-          sizing=(0.33, 0.5, 0.75), wild=0.01, tilt=0.35),
+          sizing=(0.33, 0.5, 0.75), wild=0.01, tilt=0.35, adapt=1.0),
     Style("lag", "LAG", "Loose-aggressive: wide opens, lots of 3-bets and barrels.",
           open_mult=1.45, open_size=2.3, limp=0.0, threebet=0.12, call_open=0.13, bb_defend=0.55,
           fold_3bet=0.42, fourbet=0.05, call_3bet=0.10,
           aggression=0.78, bluff=0.27, cbet=0.70, donk=0.2, looseness=0.9, value_bet=0.57, raise_value=0.74,
-          sizing=(0.5, 0.75, 1.0), wild=0.03, tilt=0.5),
+          sizing=(0.5, 0.75, 1.0), wild=0.03, tilt=0.5, adapt=0.9),
     Style("station", "Calling station", "Loose-passive rec: limps and calls far too much, rarely bluffs.",
           open_mult=0.45, open_size=3.0, limp=0.42, threebet=0.025, call_open=0.38, bb_defend=0.70,
           fold_3bet=0.3, fourbet=0.015, call_3bet=0.18,
           aggression=0.22, bluff=0.03, cbet=0.30, donk=0.45, looseness=0.6, value_bet=0.72, raise_value=0.90,
-          sizing=(0.33, 0.5), wild=0.04, tilt=0.4),
+          sizing=(0.33, 0.5), wild=0.04, tilt=0.4, adapt=0.0),
     Style("maniac", "Maniac", "Hyper-aggressive: raises everything, overbets, bluffs relentlessly.",
           open_mult=2.5, open_size=3.0, limp=0.0, threebet=0.28, call_open=0.18, bb_defend=0.65,
           fold_3bet=0.3, fourbet=0.12, call_3bet=0.22,
           aggression=0.92, bluff=0.45, cbet=0.90, donk=0.6, looseness=0.75, value_bet=0.50, raise_value=0.66,
-          sizing=(0.75, 1.0, 1.4), wild=0.08, tilt=0.7),
+          sizing=(0.75, 1.0, 1.4), wild=0.08, tilt=0.7, adapt=0.15),
 )}
 
 # Fraction of combos a TAG raises first-in from each position (6-max baseline).
@@ -92,6 +93,7 @@ def personalize(style: Style, rng: random.Random) -> Style:
     change["looseness"] = style.looseness * math.exp(rng.gauss(0, 0.06))
     change["open_size"] = round(style.open_size * math.exp(rng.gauss(0, 0.08)), 1)
     change["sizing"] = tuple(round(s * math.exp(rng.gauss(0, 0.12)), 2) for s in style.sizing)
+    change["adapt"] = min(1.0, style.adapt * math.exp(rng.gauss(0, 0.15)))
     return replace(style, **change)
 
 

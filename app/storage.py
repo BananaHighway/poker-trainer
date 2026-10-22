@@ -95,6 +95,13 @@ class Store:
             rows = self.conn.execute(sql + " ORDER BY id", args).fetchall()
         return [(r[0], r[1], json.loads(r[2])) for r in rows]
 
+    def hand_records(self, heads_up: bool) -> list[dict]:
+        """Every stored hand of one format (heads-up or 3+ players), oldest first."""
+        sql = "SELECT record FROM hands WHERE n_players " + ("= 2" if heads_up else "> 2") + " ORDER BY id"
+        with self.lock:
+            rows = self.conn.execute(sql).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
     def hand(self, hand_id: int) -> dict | None:
         with self.lock:
             row = self.conn.execute("SELECT record FROM hands WHERE id = ?", (hand_id,)).fetchone()

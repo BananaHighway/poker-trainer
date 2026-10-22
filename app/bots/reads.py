@@ -1,13 +1,15 @@
 """Reading the action: preflop situation, baseline ranges and estimated opponent ranges.
 
 These reads are style-agnostic on purpose: a bot doesn't know who it's up against,
-it only sees the betting, the same as you would at a real table.
+it only sees the betting, the same as you would at a real table. The exception is
+the hero, whom the regulars have notes on from past hands (a profile.Read).
 """
 
 from dataclasses import dataclass
 
 from ..engine import BB, STREETS, Decision
 from ..equity import OpponentRange
+from .profile import Read
 from .styles import BASE_OPEN, HU_BUTTON_OPEN, STYLES, Style
 
 BOARD_COUNT = {"flop": 3, "turn": 4, "river": 5}
@@ -30,12 +32,14 @@ class PreflopSpot:
     opener_position: str | None
     last_raiser_position: str | None
     i_raised: bool
+    limper_seats: tuple[int, ...] = ()
 
 
 def preflop_spot(ctx: Decision) -> PreflopSpot:
-    raises = limpers = callers = 0
+    raises = callers = 0
     open_to = last_to = 0
     last_raiser, opener_pos, last_pos, i_raised = None, None, None, False
+    limper_seats = []
     for a in ctx.actions:
         if a["street"] != "preflop" or a["action"] in ("post_sb", "post_bb"):
             continue
@@ -49,10 +53,11 @@ def preflop_spot(ctx: Decision) -> PreflopSpot:
                 i_raised = True
         elif a["action"] == "call":
             if raises == 0:
-                limpers += 1
+                limper_seats.append(a["seat"])
             else:
                 callers += 1
-    return PreflopSpot(raises, limpers, callers, open_to, last_to, last_raiser, opener_pos, last_pos, i_raised)
+    return PreflopSpot(raises, len(limper_seats), callers, open_to, last_to, last_raiser, opener_pos, last_pos,
+                       i_raised, tuple(limper_seats))
 
 
 def open_width(position: str, n_players: int) -> float:
@@ -67,16 +72,18 @@ def std_open_bb(position: str, n_players: int) -> float:
 
 
 def vs_open(position: str, opener_position: str | None, open_bb: float, n_players: int,
-            callers: int = 0, style: Style = TAG) -> tuple[float, float]:
+            callers: int = 0, style: Style = TAG, opener_width: float | None = None) -> tuple[float, float]:
     """(3-bet width, total continuing width) facing a single open.
 
     Wider vs late-position openers and small opens, tighter vs early openers and big
     opens. The BB gets the best price and closes the action, so it defends far wider
-    than anyone else. With the default style this is the TAG baseline the mistake
-    finder grades against.
+    than anyone else. `opener_width` replaces the seat's standard opening range when
+    there's a read on how wide this opener really opens. With the default style this
+    is the TAG baseline the mistake finder grades against.
     """
     opener = opener_position or "CO"
-    f = max(0.6, min(2.5, (open_width(opener, n_players) / BASE_OPEN["CO"]) ** 0.6))
+    width = opener_width if opener_width is not None else open_width(opener, n_players)
+    f = max(0.6, min(2.5, (width / BASE_OPEN["CO"]) ** 0.6))
     size = max(0.4, min(1.3, (std_open_bb(opener, n_players) / max(open_bb, 1.0)) ** 0.8))
     three = style.threebet * f * min(1.0, size) * 0.8 ** callers
     if position == "BB":
@@ -92,9 +99,12 @@ def threebet_continue(open_w: float, threebet_w: float, fold: float = TAG.fold_3
     return open_w * (1 - fold) * max(0.7, min(1.3, (threebet_w / TAG.threebet) ** 0.5))
 
 
-def estimate_range(seat: int, ctx: Decision) -> OpponentRange:
-    """Estimate a player's range from their own actions this hand."""
+def estimate_range(seat: int, ctx: Decision, read: Read | None = None) -> OpponentRange:
+    """Estimate a player's range from their own actions this hand. With a read on the
+    player (bots/profile.py), their real tendencies replace the typical regular's."""
     rng = OpponentRange(preflop_pct=1.0)
+    if read:
+        rng.air_bet, rng.air_call = read.air_bet, read.air_call
     n = ctx.n_players
     raises = callers = open_to = 0
     opener = opener_pos = None
@@ -104,20 +114,27 @@ def estimate_range(seat: int, ctx: Decision) -> OpponentRange:
             if a["action"] in ("post_sb", "post_bb"):
                 continue
             if a["seat"] == seat:
+                pos = a["position"]
                 if a["action"] == "raise":
                     if raises == 0:
-                        rng.preflop_pct = min(1.0, open_width(a["position"], n) * 1.15)
+                        rng.preflop_pct = read.open_range(pos) if read else min(1.0, open_width(pos, n) * 1.15)
                     elif raises == 1:
-                        rng.preflop_pct = max(0.04, vs_open(a["position"], opener_pos, open_to / BB, n, callers)[0] * 1.25)
+                        three = max(0.04, vs_open(pos, opener_pos, open_to / BB, n, callers)[0] * 1.25)
+                        rng.preflop_pct = min(1.0, three * read.scale("three_bet")) if read else three
                     else:
                         rng.preflop_pct = (0.035, 0.02)[min(raises, 3) - 2]
                 elif a["action"] == "call":
                     if raises == 0:
-                        rng.preflop_pct = 0.65 if a["position"] == "SB" else 0.45
+                        limp = 0.65 if pos == "SB" else 0.45
+                        rng.preflop_pct = min(1.0, read.open_range(pos) + read.rate("limp")) if read else limp
                     elif raises == 1:
-                        rng.preflop_pct = vs_open(a["position"], opener_pos, open_to / BB, n, callers)[1]
+                        cont = vs_open(pos, opener_pos, open_to / BB, n, callers)[1]
+                        rng.preflop_pct = min(1.0, cont * read.defend_scale(pos)) if read else cont
                     elif raises == 2 and seat == opener:
-                        rng.preflop_pct = threebet_continue(open_width(a["position"], n), three_w)
+                        if read:
+                            rng.preflop_pct = threebet_continue(read.open_range(pos), three_w, read.rate("fold_3bet"))
+                        else:
+                            rng.preflop_pct = threebet_continue(open_width(pos, n), three_w)
                     else:
                         rng.preflop_pct = 0.07 if raises == 2 else 0.03
             if a["action"] == "raise":

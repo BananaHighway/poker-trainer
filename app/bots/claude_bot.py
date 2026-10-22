@@ -62,6 +62,16 @@ class ClaudeBot:
     def hand_over(self, net: int, showdown: bool) -> None:
         self.fallback.hand_over(net, showdown)
 
+    def _notes(self, ctx: Decision) -> str:
+        """Tracker notes on players at the table, for characters that keep notes (regulars)."""
+        if self.style.adapt <= 0:
+            return ""
+        lines = [f"Your notes on {p['name']} from {ctx.profiles[p['seat']].hands} past hands: "
+                 f"{ctx.profiles[p['seat']].summary()}."
+                 for p in ctx.players if p["seat"] in ctx.profiles and p["seat"] != ctx.seat
+                 and ctx.profiles[p["seat"]].hands]
+        return "\n\n" + "\n".join(lines) if lines else ""
+
     def system_prompt(self) -> str:
         return (
             f"You are {self.name}, a player at a No-Limit Texas Hold'em cash game (blinds 0.5/1bb). "
@@ -94,7 +104,7 @@ class ClaudeBot:
             model=self.model,
             max_tokens=4096,
             system=[{"type": "text", "text": self.system_prompt(), "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": describe(ctx)}],
+            messages=[{"role": "user", "content": describe(ctx) + self._notes(ctx)}],
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
         )
         if self.model in FALLBACK_MODELS:

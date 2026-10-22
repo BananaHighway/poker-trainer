@@ -60,6 +60,7 @@ class TableConfig:
     auto_topup: bool = True
     claude_enabled: bool = False
     reveal_all_at_end: bool = False
+    adaptive: bool = True        # regulars use reads on the hero from past hands
 
 
 @dataclass
@@ -82,6 +83,7 @@ class Decision:
     players: list[dict]
     actions: list[dict]
     bb: int = BB
+    profiles: dict = field(default_factory=dict)   # seat -> bots.profile.Profile (notes from past hands)
 
     @property
     def live_opponents(self) -> list[dict]:
@@ -133,6 +135,9 @@ class Table:
         self.hero_net = 0
         self.claude = {"calls": 0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0, "errors": 0}
         self.last_error: str | None = None
+        # seat -> bots.profile.Profile: what the regulars know about a player. Set by
+        # the app (main.create_table); updated here after every hand.
+        self.profiles: dict[int, object] = {}
 
     # ---- setup helpers -------------------------------------------------
     @property
@@ -247,7 +252,7 @@ class Table:
             min_to=s.min_completion_betting_or_raising_to_amount if can_raise else 0,
             max_to=s.max_completion_betting_or_raising_to_amount if can_raise else 0,
             stack=s.stacks[i], my_bet=s.bets[i], street_max_bet=max(s.bets),
-            players=players, actions=list(h.actions),
+            players=players, actions=list(h.actions), profiles=self.profiles,
         )
 
     def apply(self, seat: int, kind: str, to: int | None = None, **meta) -> None:
@@ -339,8 +344,11 @@ class Table:
         self.hands_played += 1
         if 0 in net:
             self.hero_net += net[0]
+        record = self.hand_record()
+        for profile in self.profiles.values():
+            profile.add_hand(record)
         if self.store:
-            self.store.save_hand(self.session_id, self.hand_record())
+            self.store.save_hand(self.session_id, record)
 
     # ---- serialisation ---------------------------------------------------
     def hand_record(self) -> dict:
@@ -391,7 +399,8 @@ class Table:
             log = []
             if h:
                 for a in h.actions:
-                    entry = {k: v for k, v in a.items() if k != "reason" or finished}
+                    # Reasons and reads would leak hand strength until the hand is over.
+                    entry = {k: v for k, v in a.items() if k not in ("reason", "read") or finished}
                     log.append(entry)
             legal = None
             if h and actor == 0:

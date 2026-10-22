@@ -133,6 +133,7 @@ aside { background: var(--panel); border: 1px solid var(--line); border-radius: 
 .li.mine { color: var(--accent); }
 .who { font-weight: 600; } .p { font-size: 10px; color: var(--muted); }
 .reason { color: var(--claude); font-style: italic; font-size: 12px; margin: 1px 0 3px 10px; }
+.read { color: var(--accent); font-size: 12px; margin: 1px 0 3px 10px; }
 .result { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 6px; display: grid; gap: 4px; }
 .shown { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .history label.chk { margin-bottom: 8px; color: var(--muted); }

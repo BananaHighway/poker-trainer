@@ -31,6 +31,11 @@ python -m venv .venv
   Before the flop, bots follow position-based range charts scaled by their style. They defend the big blind wider against late-position and small opens. When 3-bet, they keep playing part of the range they opened. After the flop, they estimate equity against each opponent's likely range (inferred from that opponent's betting) and decide using pot odds plus style-tuned value-bet and bluff frequencies. Position matters there too: bots usually check to the last street's aggressor, need more equity to call out of position, stab when checked to in position, and barrel some turns and rivers.
 
   No two bots of a style play alike. Each bot gets its own slightly different version of its style (opening width, 3-bet and defence frequencies, c-bet rate, bet sizes). Hands near a range border are mixed, and once in a while a bot plays a hand from well outside its range. After losing a big pot, a bot plays looser and more aggressively for a few hands. Bots top up to the starting stack, like regulars on auto-rebuy.
+- **Regulars adapt to my play** (setup, on by default): the bots keep notes on you, built from every hand you've played in the same format (6-max or heads-up) across sessions. They use only what an opponent could see: your actions and showdowns, never your folded cards. Recent hands count more (a hand 400 hands ago counts half), and until a stat has enough spots they assume you play like a typical regular. They then exploit your leaks:
+  - **Preflop:** they 3-bet you light if you fold to 3-bets, steal more if you fold your big blind, raise your limps wider, and defend wider against your loose opens.
+  - **Postflop:** they c-bet and barrel you more if you give up, value-bet thinner if you call down, bluff less if you don't fold, and respect your bets if you rarely bet.
+
+  TAG and LAG bots use these notes fully and nits partly; stations and maniacs ignore them. Claude seats with a regular's style get the same notes in their prompt. After each hand, any action a bot took because of a read is labelled in the hand log, e.g. *Read on you: Light 3-bet: you fold to 3-bets 68%*.
 - **Keyboard**: `F` fold, `C` check/call, `R` or `Enter` bet/raise. Use the preset buttons or the slider to set the size.
 - **Show styles**: shows each bot's player type. Turn it off to practise reading opponents from their play.
 - **History** tab: the last 40 hands. Tick *Show mucked hands* to see what the bots folded.
@@ -43,6 +48,7 @@ Use the tabs at the top. Each page can show **this session** or **all sessions**
   - Net, bb/100, and all-in EV (luck-adjusted for 2-way all-ins), with a cumulative graph of net vs EV.
   - VPIP / PFR / 3-bet / fold to 3-bet / steal / c-bet / fold to c-bet / WTSD / W$SD / AF, each compared with typical winning-regular ranges for 6-max or heads-up.
   - Results by position and by opponent type.
+  - **How the regulars read you**: each tendency the bots track, your number and sample, what they assume, and what they do about it. This always uses all sessions.
 - **Mistakes**: every one of your decisions is re-checked using only what you could see at the time.
   - **Preflop**: checked against a solid 6-max TAG chart.
   - **Postflop**, plus big preflop all-ins: calls and folds are judged by your equity against the opponents' likely ranges vs the price you were getting, with an estimated EV loss in bb.
@@ -102,7 +108,8 @@ app/
   bots/
     styles.py      player-type presets
     reads.py       preflop situation, baseline ranges (shared with the mistake finder), opponent range estimates
-    heuristic.py   style-driven bot (per-bot personality, mixing, tilt)
+    profile.py     the regulars' notes on you across sessions, and the counters they apply
+    heuristic.py   style-driven bot (per-bot personality, mixing, tilt, reads on you)
     claude_bot.py  Claude seat (lazy SDK import, heuristic fallback)
     pricing.py     model prices for the cost meter
 static/            Preact + htm UI (no build step; vendored in static/vendor)

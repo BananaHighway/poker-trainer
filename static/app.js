@@ -15,6 +15,7 @@ const defaultSeats = (n) => Array.from({ length: n }, (_, i) => ({
 const DEFAULT_SETUP = {
   count: 6, seats: defaultSeats(6), starting_bb: 100, sb_bb: 0.5, auto_topup: true,
   claude_enabled: false, reveal_all_at_end: false, speed: 700, auto_deal: true, show_styles: true,
+  adaptive: true,
 };
 
 // ---------- setup screen ----------
@@ -62,6 +63,8 @@ function Setup({ meta, onStart, error }) {
         <label class="chk"><input type="checkbox" checked=${cfg.auto_topup} onChange=${(e) => set({ auto_topup: e.target.checked })} /> Auto top-up my stack each hand</label>
         <label class="chk"><input type="checkbox" checked=${cfg.reveal_all_at_end} onChange=${(e) => set({ reveal_all_at_end: e.target.checked })} /> Reveal mucked hands after each hand</label>
         <label class="chk"><input type="checkbox" checked=${cfg.auto_deal} onChange=${(e) => set({ auto_deal: e.target.checked })} /> Auto-deal next hand</label>
+        <label class="chk" title="Regular bots keep notes on you from all your past hands and exploit your leaks. See Stats for what they've noticed.">
+          <input type="checkbox" checked=${cfg.adaptive} onChange=${(e) => set({ adaptive: e.target.checked })} /> Regulars adapt to my play</label>
         <label>Bot speed
           <input type="range" min="100" max="2000" step="100" value=${2100 - cfg.speed} onInput=${(e) => set({ speed: 2100 - +e.target.value })} />
         </label>
@@ -353,7 +356,7 @@ function App() {
       const body = {
         seats: cfg.seats.map(({ kind, name, style, model, persona }) => ({ kind, name, style, model, persona })),
         starting_bb: cfg.starting_bb, sb_bb: cfg.sb_bb, auto_topup: cfg.auto_topup,
-        claude_enabled: cfg.claude_enabled, reveal_all_at_end: cfg.reveal_all_at_end,
+        claude_enabled: cfg.claude_enabled, reveal_all_at_end: cfg.reveal_all_at_end, adaptive: cfg.adaptive,
       };
       const s = await api("/table", body);
       setSetup(cfg); setState(s); setError(null);

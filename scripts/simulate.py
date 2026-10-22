@@ -6,7 +6,11 @@ player types. A solid 6-max regular is roughly VPIP 22-26, PFR 17-21, 3-bet 6-9,
 BB defence 45-55, fold to 3-bet 40-60, c-bet 55-70, WTSD 25-31; a reg-heavy table
 sees a flop in roughly 40-45% of hands.
 
-    .\\run.ps1 scripts\\simulate.py [hands] [players] [style,style,...]
+Like the app, the other bots keep notes on seat 0 (a profile built from scratch as
+the hands are played) and say how often a read changed what they did. Pass
+--static to turn that off, e.g. to see how much a leaky seat 0 loses to the reads.
+
+    .\\run.ps1 scripts\\simulate.py [hands] [players] [style,style,...] [--static]
 """
 
 import sys
@@ -17,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.bots.heuristic import HeuristicBot  # noqa: E402
+from app.bots.profile import Profile  # noqa: E402
 from app.engine import BB, SeatConfig, Table, TableConfig  # noqa: E402
 
 COLUMNS = ("vpip", "pfr", "3bet", "steal", "bb_def", "f_3bet", "cbet", "f_cbet", "wtsd")
@@ -89,15 +94,18 @@ def tally(h, stats, flow) -> None:
         stats[name]["wtsd"].add(h.result["showdown"] and not folded)
 
 
-def main(hands: int = 300, players: int = 6, lineup: str = "tag,nit,lag,station,maniac,tag") -> None:
+def main(hands: int = 300, players: int = 6, lineup: str = "tag,nit,lag,station,maniac,tag",
+         adaptive: bool = True) -> None:
     styles = lineup.split(",")[:players]
     seats = [SeatConfig(kind="hero" if i == 0 else "bot", name=f"{s}{i}", style=s) for i, s in enumerate(styles)]
     seats += [SeatConfig()] * (6 - len(styles))
     bots = {i: HeuristicBot(s.style, seed=i) for i, s in enumerate(seats) if s.kind != "empty"}
     table = Table(TableConfig(seats=seats), bots)
+    if adaptive:
+        table.profiles[0] = Profile(heads_up=len(styles) == 2)
     hero_bot = bots[0]
     stats = defaultdict(lambda: defaultdict(Rate))
-    flow, net = Counter(), Counter()
+    flow, net, reads = Counter(), Counter(), Counter()
     t0 = time.time()
     for _ in range(hands):
         table.start_hand()
@@ -116,6 +124,7 @@ def main(hands: int = 300, players: int = 6, lineup: str = "tag,nit,lag,station,
         assert all(a["amount"] >= 0 for a in h.actions), f"negative amount in hand {h.number}"
         assert logged >= h.result["pot"], f"log ({logged}) < pot ({h.result['pot']}) in hand {h.number}"
         tally(h, stats, flow)
+        reads.update(a["read"].split(":")[0] for a in h.actions if a.get("read"))
         for seat in h.order:
             net[table.seats[seat].cfg.name] += h.result["net"][seat]
     dt = time.time() - t0
@@ -126,8 +135,12 @@ def main(hands: int = 300, players: int = 6, lineup: str = "tag,nit,lag,station,
     for name in (s.name for s in seats if s.kind != "empty"):
         print(f"{name:<11}" + "".join(f"{str(stats[name][c]):>7}" for c in COLUMNS)
               + f"{net[name] / BB / hands * 100:>9.1f}")
+    if adaptive:
+        print("read-driven actions vs seat 0: " + (", ".join(f"{k} {v}" for k, v in reads.most_common()) or "none"))
+        for r in table.profiles[0].describe()["rows"]:
+            print(f"  {r['label']:<44}{str(r['read']):>22}  (typical {r['typical']}) -> {r['effect']}")
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:4]
-    main(*(int(a) for a in args[:2]), *args[2:3])
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    main(*(int(a) for a in args[:2]), *args[2:3], adaptive="--static" not in sys.argv)

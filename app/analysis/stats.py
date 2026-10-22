@@ -41,8 +41,10 @@ def _preflop(actions):
     return [a for a in actions if a["street"] == "preflop" and a["action"] not in ("post_sb", "post_bb")]
 
 
-def _hand_flags(rec: dict) -> dict:
-    """Per-hand booleans for every stat's opportunity/done pair."""
+def hand_flags(rec: dict) -> dict:
+    """Per-hand flags (booleans, or counts for multi-street stats) for every stat's
+    opportunity/done pair. Uses only the hero's actions and public results, never hole
+    cards, so the bots' reads on the hero (bots/profile.py) can share it."""
     f = defaultdict(bool)
     pre = _preflop(rec["actions"])
     raises = limpers = 0
@@ -64,6 +66,16 @@ def _hand_flags(rec: dict) -> dict:
             if my_first and raises == 0 and limpers == 0 and a["position"] in ("CO", "BTN", "SB"):
                 f["steal_opp"] = True
                 f["steal"] = a["action"] == "raise"
+            if my_first and raises == 0 and limpers == 0 and a["position"] != "BB":
+                f["first_in"] = a["position"]  # first in: raised, limped or folded
+                f["rfi"] = a["action"] == "raise"
+                f["limp"] = a["action"] == "call"
+            if my_first and raises == 1 and a["position"] == "BB":
+                f["bb_opp"] = True
+                f["bb_fold"] = a["action"] == "fold"
+            elif my_first and raises == 1:
+                f["cold_opp"] = True
+                f["cold_call"] = a["action"] == "call"
             if raises == 0 and a["action"] == "raise":
                 opened = True
             my_first = False
@@ -80,15 +92,17 @@ def _hand_flags(rec: dict) -> dict:
     f["saw_flop"] = saw_flop
     flop = [a for a in post if a["street"] == "flop"]
     first_bet_seen = None
+    acted = False
     for a in flop:
         if a["seat"] == HERO:
-            if pfr_seat == HERO and first_bet_seen is None and a["to_call"] == 0:
+            if not acted and pfr_seat == HERO and first_bet_seen is None and a["to_call"] == 0:
                 f["cbet_opp"] = True
                 f["cbet"] = a["action"] == "bet"
+            # Facing the c-bet, whether it came before the hero acted or after a check.
             if pfr_seat not in (None, HERO) and first_bet_seen == pfr_seat and not f["fcb_opp"]:
                 f["fcb_opp"] = True
                 f["fcb"] = a["action"] == "fold"
-            break
+            acted = True
         if a["action"] in ("bet", "raise") and first_bet_seen is None:
             first_bet_seen = a["seat"]
     folded_ever = any(a["seat"] == HERO and a["action"] == "fold" for a in rec["actions"])
@@ -105,6 +119,9 @@ def _hand_flags(rec: dict) -> dict:
                 f["calls"] = f["calls"] + 1 if f["calls"] else 1
             elif a["action"] in ("check", "fold"):
                 f["passive"] = f["passive"] + 1 if f["passive"] else 1
+            if a["street"] != "flop" and a["to_call"] > 0:
+                f["late_opp"] += 1
+                f["late_fold"] += a["action"] == "fold"
     return f
 
 
@@ -166,7 +183,7 @@ def compute(records: list[dict], styles: dict[str, str] | None = None) -> dict:
     curve = []
 
     for rec in records:
-        f = _hand_flags(rec)
+        f = hand_flags(rec)
         me = hero_player(rec)
         if not me:
             continue

@@ -19,6 +19,10 @@ class OpponentRange:
     # board-card counts (3 = flop, 4 = turn, 5 = river) at which they showed aggression / called
     aggressive_on: list[int] = field(default_factory=list)
     called_on: list[int] = field(default_factory=list)
+    # Share of no-pair, no-draw hands kept after a bet/raise or a call (a read on the
+    # player moves these: bluffier players keep more air when betting, stations when calling).
+    air_bet: float = 0.3
+    air_call: float = 0.45
 
 
 def _connects(hole: tuple[int, int], board: list[int]) -> bool:
@@ -50,10 +54,10 @@ def _connects(hole: tuple[int, int], board: list[int]) -> bool:
 
 def _fits_line(hole: tuple[int, int], board: list[int], opp: OpponentRange, rng: random.Random) -> bool:
     for n in opp.aggressive_on:
-        if n <= len(board) and not _connects(hole, board[:n]) and rng.random() < 0.7:
+        if n <= len(board) and not _connects(hole, board[:n]) and rng.random() < 1 - opp.air_bet:
             return False
     for n in opp.called_on:
-        if n <= len(board) and not _connects(hole, board[:n]) and rng.random() < 0.55:
+        if n <= len(board) and not _connects(hole, board[:n]) and rng.random() < 1 - opp.air_call:
             return False
     return True
 

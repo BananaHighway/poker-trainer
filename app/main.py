@@ -14,6 +14,7 @@ load_dotenv(ROOT / ".env")
 
 from .bots.claude_bot import ClaudeBot, has_api_key  # noqa: E402
 from .bots.heuristic import HeuristicBot  # noqa: E402
+from .bots.profile import Profile  # noqa: E402
 from .bots.pricing import MODELS, PRICES  # noqa: E402
 from .bots.styles import STYLES  # noqa: E402
 from .engine import BB, SeatConfig, Table, TableConfig  # noqa: E402
@@ -39,6 +40,7 @@ class TableIn(BaseModel):
     auto_topup: bool = True
     claude_enabled: bool = False
     reveal_all_at_end: bool = False
+    adaptive: bool = True
 
 
 class ActIn(BaseModel):
@@ -86,11 +88,18 @@ def create_table(cfg: TableIn):
             bots[i] = ClaudeBot(sc.name, sc.style, sc.model, sc.persona, seed)
     config = TableConfig(seats=seats, starting_bb=cfg.starting_bb, sb_bb=cfg.sb_bb,
                          auto_topup=cfg.auto_topup, claude_enabled=cfg.claude_enabled,
-                         reveal_all_at_end=cfg.reveal_all_at_end)
+                         reveal_all_at_end=cfg.reveal_all_at_end, adaptive=cfg.adaptive)
     session_id = store.new_session(cfg.model_dump())
     table = Table(config, bots, store=store, session_id=session_id)
+    if cfg.adaptive:
+        table.profiles[0] = _hero_profile(heads_up=sum(1 for s in seats if s.kind != "empty") == 2)
     table.start_hand()
     return table.snapshot()
+
+
+def _hero_profile(heads_up: bool) -> Profile:
+    """The regulars' notes on you: every stored hand of this format, across sessions."""
+    return Profile.from_records(store.hand_records(heads_up), heads_up)
 
 
 @app.get("/api/state")
@@ -155,6 +164,19 @@ def _scope_rows(scope: str):
         return store.hand_rows()
     session_id = table.session_id if table else store.latest_session()
     return store.hand_rows(session_id) if session_id is not None else []
+
+
+@app.get("/api/reads")
+def reads():
+    """What the regulars know about you, for the Stats page."""
+    if table and 0 in table.profiles:
+        profile = table.profiles[0]
+    else:
+        heads_up = bool(table) and sum(1 for s in table.seats if s.cfg.kind != "empty") == 2
+        profile = _hero_profile(heads_up)
+    out = profile.describe()
+    out["active"] = bool(table) and 0 in table.profiles
+    return out
 
 
 @app.get("/api/stats")

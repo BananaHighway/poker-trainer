@@ -126,6 +126,37 @@ function spread(a, b, gap) {
   return [mid + (s * gap) / 2, mid - (s * gap) / 2];
 }
 
+// What the regular bots have noticed about you (all sessions, recency-weighted).
+function ReadsPanel() {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => { api("/reads").then(setD).catch((e) => setErr(e.message)); }, []);
+  if (err) return html`<p class="warn">${err}</p>`;
+  if (!d) return null;
+  return html`
+    <section class="card-panel">
+      <h2>How the regulars read you</h2>
+      <p class="hint">
+        Notes from all ${d.hands} of your ${d.heads_up ? "heads-up" : "6-max"} hands, across sessions. Recent hands count more
+        (a hand ${d.half_life} hands ago counts half), and until a stat has enough spots they assume typical play.
+        TAG and LAG bots use these reads fully, nits partly; stations and maniacs ignore them.
+        After each hand, actions a bot took because of a read are labelled in the hand log.
+        ${!d.active && html` <b>Not in use at the current table:</b> tick “Regulars adapt to my play” when setting up.`}
+      </p>
+      <table class="tbl">
+        <thead><tr><th>Tendency</th><th>You</th><th>Spots</th><th>They assume</th><th>Typical</th><th>What they do about it</th></tr></thead>
+        <tbody>${d.rows.map((r) => html`<tr>
+          <td><b>${r.label}</b></td>
+          <td class="num">${r.observed === null ? "–" : r.observed + "%"}</td>
+          <td class="num hint">${r.spots}</td>
+          <td class="num">${r.read}%</td>
+          <td class="num hint">${r.typical}%</td>
+          <td class="hint">${!r.confident && html`<i>(few spots) </i>`}${r.effect}</td>
+        </tr>`)}</tbody>
+      </table>
+    </section>`;
+}
+
 export function StatsPage({ meta, defaultScope }) {
   const [scope, setScope] = useState(defaultScope);
   const [d, err] = useData("/stats", scope);
@@ -172,6 +203,8 @@ export function StatsPage({ meta, defaultScope }) {
             </tbody>
           </table>
         </section>
+
+        <${ReadsPanel} />
 
         <div class="two">
           <section class="card-panel">

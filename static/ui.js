@@ -59,6 +59,7 @@ export function HandLog({ log, result, names, finished, highlight }) {
               <span class="who">${a.name} <span class="p">${a.position}</span></span> ${actionText(a)}
               ${a.source === "claude" && html` <span class="tag claude">C</span>`}
               ${finished && a.reason && html`<div class="reason">“${a.reason}”</div>`}
+              ${finished && a.read && html`<div class="read">Read on you: ${a.read}</div>`}
             </div>`)}
         </div>`)}
       ${finished && result && html`
